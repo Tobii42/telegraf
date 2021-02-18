@@ -40,6 +40,7 @@ type AMQPConsumer struct {
 	// Queue Name
 	Queue           string `toml:"queue"`
 	QueueDurability string `toml:"queue_durability"`
+	QueueExclusive  string `toml:"queue_exclusive"`
 	QueuePassive    bool   `toml:"queue_passive"`
 
 	// Binding Key
@@ -83,6 +84,7 @@ const (
 	DefaultExchangeDurability = "durable"
 
 	DefaultQueueDurability = "durable"
+	DefaultQueueIsExclusive = "false"
 
 	DefaultPrefetchCount = 50
 )
@@ -321,6 +323,7 @@ func (a *AMQPConsumer) connect(amqpConf *amqp.Config) (<-chan amqp.Delivery, err
 		ch,
 		a.Queue,
 		a.QueueDurability,
+		a.QueueExclusive,
 		a.QueuePassive)
 	if err != nil {
 		return nil, err
@@ -331,8 +334,8 @@ func (a *AMQPConsumer) connect(amqpConf *amqp.Config) (<-chan amqp.Delivery, err
 			q.Name,       // queue
 			a.BindingKey, // binding-key
 			a.Exchange,   // exchange
-			false,
-			nil,
+			false,        // no-wait
+			nil,          // arguments
 		)
 		if err != nil {
 			return nil, fmt.Errorf("Failed to bind a queue: %s", err)
@@ -404,6 +407,7 @@ func declareQueue(
 	channel *amqp.Channel,
 	queueName string,
 	queueDurability string,
+	queueExclusive string,
 	queuePassive bool,
 ) (*amqp.Queue, error) {
 	var queue amqp.Queue
@@ -417,23 +421,31 @@ func declareQueue(
 		queueDurable = true
 	}
 
+	var queueIsExclusive = false
+	switch queueExclusive {
+	case "true":
+		queueIsExclusive = true
+	default:
+		queueIsExclusive = false
+	}
+
 	if queuePassive {
 		queue, err = channel.QueueDeclarePassive(
-			queueName,    // queue
-			queueDurable, // durable
-			false,        // delete when unused
-			false,        // exclusive
-			false,        // no-wait
-			nil,          // arguments
+			queueName,        // queue
+			queueDurable,     // durable
+			false,            // delete when unused
+			queueIsExclusive, // exclusive
+			false,            // no-wait
+			nil,              // arguments
 		)
 	} else {
 		queue, err = channel.QueueDeclare(
-			queueName,    // queue
-			queueDurable, // durable
-			false,        // delete when unused
-			false,        // exclusive
-			false,        // no-wait
-			nil,          // arguments
+			queueName,        // queue
+			queueDurable,     // durable
+			false,            // delete when unused
+			queueIsExclusive, // exclusive
+			false,            // no-wait
+			nil,              // arguments
 		)
 	}
 	if err != nil {
@@ -551,6 +563,7 @@ func init() {
 			ExchangeType:           DefaultExchangeType,
 			ExchangeDurability:     DefaultExchangeDurability,
 			QueueDurability:        DefaultQueueDurability,
+			QueueExclusive:         DefaultQueueIsExclusive,
 			PrefetchCount:          DefaultPrefetchCount,
 			MaxUndeliveredMessages: defaultMaxUndeliveredMessages,
 		}
